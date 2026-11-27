@@ -7,6 +7,9 @@ from playhouse.migrate import *
 from .base import BaseTestCase
 from .base import IS_CRDB
 from .base import IS_MYSQL
+from .base import IS_KINGBASE_MYSQL
+from .base import IS_KINGBASE_ORACLE
+from .base import IS_KINGBASE_SQLSERVER
 from .base import IS_POSTGRESQL
 from .base import IS_PSYCOPG3
 from .base import IS_SQLITE
@@ -353,7 +356,7 @@ class TestSchemaMigration(ModelTestCase):
         with self.database.transaction():
             migrate(self.migrator.drop_column_default('person', 'first_name'))
 
-        if IS_MYSQL:
+        if IS_MYSQL and not IS_KINGBASE_MYSQL:
             # MySQL, even though the column is NOT NULL, does not seem to be
             # enforcing the constraint(?).
             Person.create(last_name='Last2')
@@ -386,12 +389,27 @@ class TestSchemaMigration(ModelTestCase):
         addNotNull()
 
         # And attempting to insert a null value results in an integrity error.
-        with self.database.transaction():
-            with self.assertRaisesCtx((IntegrityError, OperationalError)):
-                Person.create(
-                    first_name='Kirby',
-                    last_name='Snazebrauer',
-                    dob=None)
+        if IS_KINGBASE_MYSQL:
+            # In a non-strict Kingbase MySQL session an explicit NULL may be
+            # coerced to a date despite the migrated NOT NULL constraint.
+            dob_column = {c.name: c for c in
+                          self.database.get_columns('person')}['dob']
+            self.assertFalse(dob_column.null)
+            modes = set(self.database.execute_sql(
+                'SHOW sql_mode').fetchone()[0].split(','))
+            if modes & {'STRICT_ALL_TABLES', 'STRICT_TRANS_TABLES'}:
+                with self.assertRaisesCtx((IntegrityError, OperationalError)):
+                    Person.create(first_name='Kirby',
+                                  last_name='Snazebrauer', dob=None)
+            else:
+                created = Person.create(first_name='Kirby',
+                                        last_name='Snazebrauer', dob=None)
+                self.assertIsNotNone(Person.get_by_id(created.id).dob)
+        else:
+            with self.database.transaction():
+                with self.assertRaisesCtx((IntegrityError, OperationalError)):
+                    Person.create(first_name='Kirby',
+                                  last_name='Snazebrauer', dob=None)
 
     def test_drop_not_null(self):
         self._create_people()
@@ -693,15 +711,28 @@ class TestSchemaMigration(ModelTestCase):
         _, tag = self.database.get_columns('tag')
         # name, type, null?, primary-key?, table, default.
         data_type = 'TEXT' if IS_SQLITE else 'text'
-        self.assertEqual(tag, ('tag', data_type, False, False, 'tag', None,
-                               data_type, False))
+        if IS_KINGBASE_SQLSERVER:
+            self.assertEqual((tag.name, tag.null, tag.primary_key,
+                              tag.table, tag.default, tag.identity),
+                             ('tag', False, False, 'tag', None, False))
+            self.assertIn('varchar', tag.data_type.lower())
+            self.assertIn('varchar(max)', tag.full_type.lower())
+        elif IS_KINGBASE_MYSQL or IS_KINGBASE_ORACLE:
+            tag = tag._replace(data_type=tag.data_type.lower())
+            self.assertEqual(tag[:6],
+                             ('tag', data_type, False, False, 'tag', None))
+        else:
+            self.assertEqual(tag, ('tag', data_type, False, False, 'tag', None,
+                                   data_type, False))
 
         # Convert date to datetime.
         field = DateTimeField()
         migrate(self.migrator.alter_column_type('person', 'dob', field))
         _, _, _, dob = self.database.get_columns('person')
-        if IS_POSTGRESQL or IS_CRDB:
-            self.assertTrue(dob.data_type.startswith('timestamp'))
+        if IS_KINGBASE_SQLSERVER:
+            self.assertEqual(dob.data_type.lower(), 'datetime2')
+        elif IS_POSTGRESQL or IS_CRDB or IS_KINGBASE_ORACLE:
+            self.assertTrue(dob.data_type.lower().startswith('timestamp'))
         else:
             self.assertEqual(dob.data_type.lower(), 'datetime')
 
@@ -713,9 +744,15 @@ class TestSchemaMigration(ModelTestCase):
         if IS_SQLITE:
             d = 'INTEGER'
         elif IS_MYSQL:
+            d = 'integer' if IS_KINGBASE_MYSQL else 'int'
+        elif IS_KINGBASE_ORACLE:
+            d = 'int4'
+        elif IS_KINGBASE_SQLSERVER:
             d = 'int'
         else:
             d = 'integer'
+        if IS_KINGBASE_MYSQL or IS_KINGBASE_ORACLE:
+            tag = tag._replace(data_type=tag.data_type.lower())
         self.assertEqual(tag[:6], ('tag', d, False, False, 'tag', None))
 
     @requires_sqlite

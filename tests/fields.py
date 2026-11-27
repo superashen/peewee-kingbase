@@ -36,6 +36,7 @@ from playhouse.hybrid import *
 from .base import BaseTestCase
 from .base import IS_CRDB
 from .base import IS_MYSQL
+from .base import IS_KINGBASE_SQLSERVER
 from .base import IS_ORACLE_MYSQL
 from .base import IS_POSTGRESQL
 from .base import IS_SQLITE
@@ -2573,6 +2574,8 @@ class TestCompositePrimaryKey(ModelTestCase):
                '"title" TEXT NOT NULL, PRIMARY KEY ("first", "last"))')
         if IS_MYSQL:
             sql = sql.replace('"', '`')
+        elif IS_KINGBASE_SQLSERVER:
+            sql = sql.replace('TEXT NOT NULL', 'VARCHAR(MAX) NOT NULL')
         self.assertEqual(Employee._schema._create_table().query(), (sql, []))
 
 

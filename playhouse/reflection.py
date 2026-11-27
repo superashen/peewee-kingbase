@@ -570,6 +570,17 @@ class Introspector(object):
             if database.obj is None:
                 raise ValueError('Cannot introspect an uninitialized Proxy.')
             database = database.obj  # Reference the proxied db obj.
+        if cls is Introspector:
+            # Kingbase inherits MySQL/PostgreSQL classes but needs its own
+            # catalog and cursor-type mapping at the public factory entry.
+            from playhouse.kingbase_native import KingbaseMySQLDatabase
+            from playhouse.kingbase_native import KingbaseOracleDatabase
+            from playhouse.kingbase_native import KingbaseSQLServerDatabase
+            if isinstance(database, (KingbaseMySQLDatabase,
+                                     KingbaseOracleDatabase,
+                                     KingbaseSQLServerDatabase)):
+                from playhouse.kingbase_reflection import KingbaseIntrospector
+                return KingbaseIntrospector.from_database(database, schema)
         if CockroachDatabase and isinstance(database, CockroachDatabase):
             metadata = CockroachDBMetadata(database)
         elif isinstance(database, PostgresqlDatabase):

@@ -23,7 +23,8 @@ def get_option_parser():
         '--engine',
         dest='engine',
         help=('Database engine to test, one of '
-              '[sqlite, postgres, mysql, mysqlconnector, apsw, sqlcipher,'
+              '[sqlite, postgres, mysql, kingbase_mysql, kingbase_oracle, kingbase_sqlserver, '
+              'mysqlconnector, apsw, sqlcipher,'
               ' cockroachdb, psycopg3]'))
     basic.add_option('-v', '--verbosity', dest='verbosity', default=1,
                      type='int', help='Verbosity of output')
@@ -55,7 +56,22 @@ def get_option_parser():
             ('host', 'localhost', 'localhost'),
             ('port', '26257', ''),
             ('user', 'root', 'root'),
-            ('password', 'blank', ''))))
+            ('password', 'blank', ''))),
+        ('Kingbase', 'KINGBASE', (
+            ('host', '127.0.0.1', '127.0.0.1'),
+            ('port', '54323', '54323'),
+            ('user', 'wang', 'wang'),
+            ('password', 'blank', os.environ.get('KINGBASE_PASSWORD', '')))),
+        ('Kingbase Oracle', 'KINGBASE_ORACLE', (
+            ('host', '127.0.0.1', '127.0.0.1'),
+            ('port', '54324', '54324'),
+            ('user', 'wang', 'wang'),
+            ('password', 'blank', os.environ.get('KINGBASE_PASSWORD', '')))),
+        ('Kingbase SQL Server', 'KINGBASE_SQLSERVER', (
+            ('host', '127.0.0.1', '127.0.0.1'),
+            ('port', '54325', '54325'),
+            ('user', 'wang', 'wang'),
+            ('password', 'blank', os.environ.get('KINGBASE_PASSWORD', '')))))
     for name, prefix, param_list in db_param_map:
         group = optparse.OptionGroup(parser, '%s connection options' % name)
         for param, default_disp, default_val in param_list:
@@ -102,7 +118,8 @@ if __name__ == '__main__':
     if options.engine:
         os.environ['PEEWEE_TEST_BACKEND'] = options.engine
 
-    for db in ('mysql', 'psql', 'crdb'):
+    for db in ('mysql', 'psql', 'crdb', 'kingbase', 'kingbase_oracle',
+               'kingbase_sqlserver'):
         for key in ('host', 'port', 'user', 'password'):
             att_name = '_'.join((db, key))
             value = getattr(options, att_name, None)

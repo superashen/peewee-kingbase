@@ -35,6 +35,7 @@ cysqlite = ["cysqlite"]
 aiosqlite = ["aiosqlite ", "greenlet"]
 aiomysql = ["aiomysql", "greenlet"]
 asyncpg = ["asyncpg ", "greenlet"]
+kingbase-async = ["asyncpg-kes"]
 
 [tool.setuptools]
 # packages declared in setup.py: the -stubs dir names have hyphens, rejected here.

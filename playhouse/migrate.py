@@ -192,6 +192,11 @@ class SchemaMigrator(object):
 
     @classmethod
     def from_database(cls, database):
+        # Database adapters can select a migrator without importing their
+        # optional modules for the standard backends.
+        migrator_class = getattr(database, 'schema_migrator_class', None)
+        if migrator_class is not None:
+            return migrator_class(database)
         if CockroachDatabase and isinstance(database, CockroachDatabase):
             return CockroachDBMigrator(database)
         elif isinstance(database, PostgresqlDatabase):

@@ -8,14 +8,17 @@ from peewee import _savepoint
 from peewee import _transaction
 from playhouse.cockroachdb import PooledCockroachDatabase
 from playhouse.pool import *
+from playhouse.kingbase_pool import PooledKingbaseMySQLDatabase
 
 from .base import BACKEND
 from .base import BaseTestCase
 from .base import IS_CRDB
 from .base import IS_MYSQL
+from .base import IS_KINGBASE_MYSQL
 from .base import IS_POSTGRESQL
 from .base import IS_SQLITE
 from .base import ModelTestCase
+from .base import db
 from .base import db_loader
 from .base_models import Register
 
@@ -775,7 +778,9 @@ class TestPooledDatabaseIntegration(ModelTestCase):
 
     def setUp(self):
         params = {}
-        if IS_MYSQL:
+        if IS_KINGBASE_MYSQL:
+            db_class = PooledKingbaseMySQLDatabase
+        elif IS_MYSQL:
             db_class = PooledMySQLDatabase
         elif IS_POSTGRESQL:
             db_class = PooledPostgresqlDatabase
@@ -784,7 +789,8 @@ class TestPooledDatabaseIntegration(ModelTestCase):
         else:
             db_class = PooledSqliteDatabase
             params['check_same_thread'] = False
-        self.database = db_loader(BACKEND, db_class=db_class, **params)
+        self.database = db_loader(BACKEND, name=db.database,
+                                  db_class=db_class, **params)
         super(TestPooledDatabaseIntegration, self).setUp()
 
     def assertConnections(self, expected):

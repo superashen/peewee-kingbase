@@ -2284,6 +2284,9 @@ class Query(BaseQuery):
             (ctx
              .literal(' ORDER BY ')
              .sql(CommaNodeList(self._order_by)))
+        pagination = ctx.state.pagination
+        if pagination is not None and pagination(self, ctx):
+            return ctx
         if self._limit is not None or (self._offset is not None and
                                        ctx.state.limit_max):
             limit = ctx.state.limit_max if self._limit is None else self._limit
@@ -2359,7 +2362,20 @@ class SelectBase(_HashableSource, Source, SelectQuery):
     @database_required
     def scalar(self, database, as_tuple=False, as_dict=False):
         if as_dict:
-            return self.dicts().peek(database)
+            row = self.dicts().peek(database)
+            if row is not None and len(row) == 1:
+                alias = None
+                try:
+                    item = self._returning[0]
+                    alias = getattr(item, '_alias', None)
+                    if alias is None and hasattr(item, 'name'):
+                        alias = item.name
+                except Exception:
+                    alias = None
+                if alias and alias not in row:
+                    value = next(iter(row.values()))
+                    return {alias: value}
+            return row
         row = self.tuples().peek(database)
         return row[0] if row and not as_tuple else row
 

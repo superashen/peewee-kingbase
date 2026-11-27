@@ -5,6 +5,7 @@ from .base import ModelTestCase
 from .base import TestModel
 from .base import get_in_memory_db
 from .base import IS_MYSQL
+from .base import IS_KINGBASE_ORACLE
 from .base import IS_SQLITE
 from .base import skip_if
 from .base import skip_unless
@@ -221,7 +222,8 @@ class TestWithRelated(ModelTestCase):
                 sql = self.history[-1].msg[0]
                 idx = sql.index('FROM (SELECT')
                 self.assertNotIn('LIMIT', sql[:idx])
-                self.assertIn('LIMIT', sql[idx:])
+                self.assertIn('FETCH NEXT' if IS_KINGBASE_ORACLE else 'LIMIT',
+                              sql[idx:])
 
     def test_get_with_load_tree(self):
         # get() paginates the parent; the load survives the implicit LIMIT.

@@ -16,6 +16,12 @@ try:
     from playhouse.cysqlite_ext import CySqliteDatabase
 except ImportError:
     CySqliteDatabase = None
+try:
+    from playhouse.kingbase_native import KingbaseMySQLDatabase
+    from playhouse.kingbase_native import KingbaseOracleDatabase
+    from playhouse.kingbase_native import KingbaseSQLServerDatabase
+except ImportError:
+    KingbaseMySQLDatabase = KingbaseOracleDatabase = KingbaseSQLServerDatabase = None
 
 
 logger = logging.getLogger('peewee')
@@ -32,6 +38,15 @@ def db_loader(engine, name='peewee_test', db_class=None, **params):
             MariaDBConnectorDatabase: ['mariadb', 'maridbconnector'],
             CockroachDatabase: ['cockroach', 'cockroachdb', 'crdb'],
         }
+        if KingbaseMySQLDatabase is not None:
+            engine_aliases[KingbaseMySQLDatabase] = [
+                'kingbase', 'kingbase_mysql', 'kingbase-mysql']
+        if KingbaseOracleDatabase is not None:
+            engine_aliases[KingbaseOracleDatabase] = [
+                'kingbase_oracle', 'kingbase-oracle']
+        if KingbaseSQLServerDatabase is not None:
+            engine_aliases[KingbaseSQLServerDatabase] = [
+                'kingbase_sqlserver', 'kingbase-sqlserver']
         engine_map = dict((alias, db) for db, aliases in engine_aliases.items()
                           for alias in aliases if db is not None)
         if engine.lower() not in engine_map:
@@ -39,6 +54,32 @@ def db_loader(engine, name='peewee_test', db_class=None, **params):
         db_class = engine_map[engine.lower()]
     if issubclass(db_class, SqliteDatabase) and not name.endswith('.db'):
         name = '%s.db' % name if name != ':memory:' else name
+    elif (KingbaseMySQLDatabase is not None and
+          issubclass(db_class, KingbaseMySQLDatabase)):
+        params.update(KINGBASE_PARAMS)
+        params.setdefault('dbname', name)
+    elif (KingbaseOracleDatabase is not None and
+          issubclass(db_class, KingbaseOracleDatabase)):
+        params.update({
+            'host': os.environ.get('KINGBASE_HOST'),
+            'port': int(os.environ.get('KINGBASE_PORT', '54324')),
+            'user': os.environ.get('KINGBASE_USER'),
+            'password': os.environ.get('KINGBASE_PASSWORD'),
+            'dbname': os.environ.get('KINGBASE_ORACLE_DB', name),
+        })
+        # ksycopg2 does not apply libpq's PGTZ environment setting. Keep the
+        # existing UTC full-suite test contract at the connection boundary.
+        if os.environ.get('PGTZ') == 'UTC':
+            params.setdefault('options', '-c timezone=UTC')
+    elif (KingbaseSQLServerDatabase is not None and
+          issubclass(db_class, KingbaseSQLServerDatabase)):
+        params.update({
+            'host': os.environ.get('KINGBASE_HOST'),
+            'port': int(os.environ.get('KINGBASE_PORT', '54325')),
+            'user': os.environ.get('KINGBASE_USER'),
+            'password': os.environ.get('KINGBASE_PASSWORD'),
+            'dbname': os.environ.get('KINGBASE_SQLSERVER_DB', name),
+        })
     elif issubclass(db_class, MySQLDatabase):
         params.update(MYSQL_PARAMS)
     elif issubclass(db_class, CockroachDatabase):
@@ -64,7 +105,10 @@ SLOW_TESTS = bool(os.environ.get('PEEWEE_SLOW_TESTS'))
 
 # What family of database are we using.
 IS_SQLITE = BACKEND.startswith(('sqlite', 'cysqlite'))
-IS_MYSQL = BACKEND.startswith(('mysql', 'maria'))
+IS_KINGBASE_MYSQL = BACKEND in ('kingbase', 'kingbase_mysql', 'kingbase-mysql')
+IS_KINGBASE_ORACLE = BACKEND in ('kingbase_oracle', 'kingbase-oracle')
+IS_KINGBASE_SQLSERVER = BACKEND in ('kingbase_sqlserver', 'kingbase-sqlserver')
+IS_MYSQL = BACKEND.startswith(('mysql', 'maria')) or IS_KINGBASE_MYSQL
 IS_POSTGRESQL = BACKEND.startswith(('postgres', 'psycopg'))
 
 # Specific database or driver.
@@ -72,7 +116,7 @@ IS_CRDB = BACKEND in ('cockroach', 'cockroachdb', 'crdb')
 IS_PSYCOPG3 = BACKEND == 'psycopg3'
 IS_CYSQLITE = BACKEND == 'cysqlite'
 
-if IS_MYSQL:
+if IS_MYSQL and not IS_KINGBASE_MYSQL:
     try:
         import pymysql
     except ImportError:
@@ -80,6 +124,8 @@ if IS_MYSQL:
             import MySQLdb
         except ImportError:
             raise ImportError('mysql client is not installed')
+if (IS_KINGBASE_MYSQL or IS_KINGBASE_ORACLE or IS_KINGBASE_SQLSERVER) and KingbaseMySQLDatabase is None:
+    raise ImportError('Kingbase database classes could not be imported.')
 if BACKEND.startswith('postgres'):
     try:
         import psycopg2
@@ -105,6 +151,12 @@ def make_db_params(key):
 CRDB_PARAMS = make_db_params('CRDB')
 MYSQL_PARAMS = make_db_params('MYSQL')
 PSQL_PARAMS = make_db_params('PSQL')
+KINGBASE_PARAMS = make_db_params('KINGBASE')
+KINGBASE_PARAMS.setdefault('user', os.environ.get('KINGBASE_USER', 'wang'))
+KINGBASE_PARAMS.setdefault('password', os.environ.get('KINGBASE_PASSWORD', ''))
+KINGBASE_PARAMS.setdefault('host', os.environ.get('KINGBASE_HOST', '127.0.0.1'))
+KINGBASE_PARAMS['port'] = int(
+    os.environ.get('KINGBASE_PORT') or KINGBASE_PARAMS.get('port') or '54323')
 if IS_PSYCOPG3:
     PSQL_PARAMS['prefer_psycopg3'] = True
 
@@ -116,8 +168,18 @@ if VERBOSITY > 2:
     handler.setLevel(logging.DEBUG)
 
 
+def _default_test_database_name():
+    if IS_KINGBASE_MYSQL:
+        return os.environ.get('KINGBASE_DB', 'test')
+    if IS_KINGBASE_ORACLE:
+        return os.environ.get('KINGBASE_ORACLE_DB', 'peewee_test')
+    if IS_KINGBASE_SQLSERVER:
+        return os.environ.get('KINGBASE_SQLSERVER_DB', 'peewee_test')
+    return 'peewee_test'
+
+
 def new_connection(**kwargs):
-    return db_loader(BACKEND, 'peewee_test', **kwargs)
+    return db_loader(BACKEND, _default_test_database_name(), **kwargs)
 
 
 db = new_connection()

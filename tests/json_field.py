@@ -7,6 +7,8 @@ from .base import IS_CRDB
 from .base import IS_MARIADB
 from .base import IS_MYSQL
 from .base import IS_ORACLE_MYSQL
+from .base import IS_KINGBASE_ORACLE
+from .base import IS_KINGBASE_SQLSERVER
 from .base import IS_POSTGRESQL
 from .base import IS_SQLITE
 from .base import BaseTestCase
@@ -22,7 +24,8 @@ SKIP_PATHS = IS_SQLITE and not IS_SQLITE_38
 
 # CockroachDB rides PostgresqlJSONMethods (and psycopg), so it gets the
 # postgres-flavored behaviors and SQL shapes in these tests.
-IS_PG_JSON = IS_POSTGRESQL or IS_CRDB
+IS_PG_JSON = (IS_POSTGRESQL or IS_CRDB or IS_KINGBASE_ORACLE or
+              IS_KINGBASE_SQLSERVER)
 
 
 class JM(TestModel):
@@ -705,7 +708,7 @@ class TestSQLShapes(ModelTestCase):
             self.assertIn('$."k"', params)
         elif IS_PG_JSON:
             self.assertIn(' #> ', sql)
-            self.assertIn(['k'], params)
+            self.assertIn('{"k"}' if IS_KINGBASE_SQLSERVER else ['k'], params)
         elif IS_MYSQL:
             lower = sql.lower()
             self.assertIn('json_extract', lower)

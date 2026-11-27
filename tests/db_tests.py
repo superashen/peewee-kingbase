@@ -33,6 +33,9 @@ from .base import BaseTestCase
 from .base import DatabaseTestCase
 from .base import IS_CRDB
 from .base import IS_MYSQL
+from .base import IS_KINGBASE_SQLSERVER
+from .base import IS_KINGBASE_MYSQL
+from .base import IS_KINGBASE_ORACLE
 from .base import IS_MYSQL_ADVANCED_FEATURES
 from .base import IS_ORACLE_MYSQL
 from .base import IS_POSTGRESQL
@@ -581,6 +584,25 @@ class TestIntrospection(ModelTestCase):
                 ('viewtest_public', ('CREATE VIEW viewtest_public AS '
                                      'SELECT content, ts FROM viewtest '
                                      'WHERE status = 1 ORDER BY ts DESC'))])
+        elif IS_KINGBASE_MYSQL:
+            # The MySQL-compatible server exposes normalized PostgreSQL-style
+            # view SQL, including explicit NULLS LAST on descending order.
+            # Peewee 4.2's view source omits redundant WHERE parentheses.
+            assertViews([
+                ('viewtest_deleted',
+                 ('SELECT content FROM viewtest WHERE status = 9 '
+                  'ORDER BY id DESC NULLS LAST')),
+                ('viewtest_public',
+                 ('SELECT content, ts FROM viewtest WHERE status = 1 '
+                  'ORDER BY ts DESC NULLS LAST'))])
+        elif IS_KINGBASE_ORACLE:
+            assertViews([
+                ('viewtest_deleted',
+                 ('SELECT content FROM viewtest WHERE (status = 9) '
+                  'ORDER BY id DESC')),
+                ('viewtest_public',
+                 ('SELECT content, ts FROM viewtest WHERE (status = 1) '
+                  'ORDER BY ts DESC'))])
         elif IS_MYSQL:
             assertViews([
                 ('viewtest_deleted',
@@ -634,6 +656,9 @@ class TestIntrospection(ModelTestCase):
         elif IS_MYSQL:
             expected = {'name': 'varchar(50)', 'value': 'decimal(10,2)',
                         'active': 'tinyint(1)', 'notes': 'text'}
+        elif IS_KINGBASE_SQLSERVER:
+            expected = {'name': 'varchar(50)', 'value': 'numeric(10,2)',
+                        'active': 'boolean', 'notes': 'varchar(max)'}
         else:
             expected = {'name': 'character varying(50)',
                         'value': 'numeric(10,2)', 'active': 'boolean',
@@ -644,7 +669,7 @@ class TestIntrospection(ModelTestCase):
         # The data_type vocabulary is unchanged.
         if IS_SQLITE:
             self.assertEqual(cols['name'].data_type, 'VARCHAR(50)')
-        elif IS_MYSQL:
+        elif IS_MYSQL or IS_KINGBASE_SQLSERVER:
             self.assertEqual(cols['name'].data_type, 'varchar')
         else:
             self.assertEqual(cols['name'].data_type, 'character varying')
@@ -694,14 +719,17 @@ class TestIntrospection(ModelTestCase):
     @requires_mysql
     def test_schema_argument_honored(self):
         # The schema argument was previously ignored.
-        tables = self.database.get_tables(schema='peewee_test')
+        # Disposable Kingbase databases have generated names, unlike Peewee's
+        # fixed native MySQL test database.
+        schema = self.database.database if IS_KINGBASE_MYSQL else 'peewee_test'
+        tables = self.database.get_tables(schema=schema)
         self.assertEqual(tables, self.database.get_tables())
         self.assertEqual(self.database.get_tables(schema='fake_schema_z'), [])
 
         table = UniqueModel._meta.table_name
         names = [c.name for c in self.database.get_columns(table)]
         names2 = [c.name for c in
-                  self.database.get_columns(table, schema='peewee_test')]
+                  self.database.get_columns(table, schema=schema)]
         self.assertEqual(names, names2)
 
     @requires_sqlite
