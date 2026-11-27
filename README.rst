@@ -167,29 +167,24 @@ commit/rollback and close the pool at application shutdown:
 Validation
 ~~~~~~~~~~
 
-The repository's KingbaseES test runner covers synchronous integration,
-database interfaces, asynchronous integration and the Peewee full suite. It
-uses protected local instance settings and creates disposable test users and
-databases. From this source tree, run the MySQL/Oracle matrix or the SQL
-Server matrix as follows (these scripts require the corresponding local
-``tests/kingbase/.env.*.local`` configuration and target instances):
+The adapted Peewee test suite is included in ``tests/``. Run the default
+SQLite suite with ``python runtests.py``. To test a KingbaseES mode, install
+``ksycopg2``, prepare a disposable database in an instance configured for
+that mode, and set ``KINGBASE_HOST``, ``KINGBASE_PORT``, ``KINGBASE_USER``,
+``KINGBASE_PASSWORD`` and the mode-specific database name
+(``KINGBASE_DB``, ``KINGBASE_ORACLE_DB`` or ``KINGBASE_SQLSERVER_DB``).
+Then select the matching backend:
 
 .. code-block:: console
 
-    PGTZ=UTC bash tests/kingbase/run_new_versions_full.sh
-    bash tests/kingbase/run_sqlserver_full.sh
+    python runtests.py -e kingbase_mysql
+    PGTZ=UTC python runtests.py -e kingbase_oracle
+    python runtests.py -e kingbase_sqlserver
 
-The Oracle full-suite result uses a UTC test connection session. In the
-recorded runs, MySQL completed 1665 full-suite tests with 233 skipped;
-Oracle completed 1665 with 206 skipped under UTC; SQL Server completed 1665
-with 206 skipped. Each recorded full-suite process exited successfully.
-Skipped tests are not counted as executed passes. Exact commands, per-stage
-results and logs are in ``tests/kingbase/results/``: see
-``v9-new-full-2026-11-12-120332-4276fe/`` for MySQL,
-``v9-new-full-2026-11-21-144521-4069bb/`` for the current Oracle full suite,
-and ``v9-new-full-2026-11-12-143703-790fb1/`` for SQL Server. The runner is
-configured for these local V9 instances; adjust its instance-specific test
-configuration before using it against another environment.
+The recorded local full-suite runs used V9R3C18 (MySQL), V9R2C16 (Oracle,
+UTC test session) and V9R4C19 (SQL Server). Their instance configuration,
+integration scripts and generated logs are kept outside this review branch.
+Skipped tests are not counted as passes.
 
 Examples
 --------
